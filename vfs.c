@@ -68,7 +68,7 @@ static void validate_path(vpath_t path) {
     uint32_t parent_length = (uint32_t)strlen(path);
     char lastchar = path[parent_length - 1];
     if (lastchar != WIN_PATH_END_STD && lastchar != UNIX_PATH_END_STD) {
-        strcat(path, (const char*)WIN_PATH_END_STD);
+        strcat_s(path, sizeof(vpath_t), (const char*)WIN_PATH_END_STD);
     }
 #else
     uint32_t len = (uint32_t)strlen(path);
@@ -80,7 +80,7 @@ static void validate_path(vpath_t path) {
     uint32_t parent_length = (uint32_t)strlen(path);
     char lastchar = path[parent_length - 1];
     if (lastchar != '/') {
-        strcat(path, "/");
+        strcat_s(path, sizeof(vpath_t), "/");
     }
 #endif
 }
@@ -128,10 +128,10 @@ bool vfs_is(const vpath_t path, int type) {
 
 bool vfs_create(const vpath_t parent, const char* name, int v) {
     vpath_t new_path = { 0 };
-    strcpy(new_path, parent);
+    strcpy_s(new_path, sizeof(vpath_t), parent);
 
     validate_path(new_path);
-    strcat(new_path, name);
+    strcat_s(new_path, sizeof(vpath_t), name);
 
     if (v == VFS_TYPE_DIR) {
         if (vfs_exist(new_path)) {
@@ -141,10 +141,10 @@ bool vfs_create(const vpath_t parent, const char* name, int v) {
         char cmd[MAX_PATH + 9];
         snprintf(cmd, sizeof(cmd), "mkdir %s", new_path);
         return system(cmd) == 0;
-    }
-    else if (v == VFS_TYPE_FILE) {
-        FILE* file = fopen(new_path, "w");
-        if (file == NULL) {
+    } else if (v == VFS_TYPE_FILE) {
+        FILE* file;
+        errno_t err = fopen_s(&file, new_path, "w");
+        if (err != 0) {
             printf("failed to create file: %s\n", new_path);
             return false;
         }
@@ -161,7 +161,7 @@ bool vfs_path_new(const char* cstr_path, vpath_t out) {
         return false;
     }
     memset(out, 0, sizeof(vpath_t));
-    strcpy(out, cstr_path);
+    strcpy_s(out, sizeof(vpath_t), cstr_path);
     return true;
 }
 
@@ -169,9 +169,9 @@ bool vfs_system_root(vpath_t out) {
     memset(out, 0, sizeof(vpath_t));
 
 #ifdef _WIN32
-    strcpy(out, "C:\\");
+    strcpy_s(out, sizeof(vpath_t), "C:\\");
 #else
-    strcpy(out, "/");
+    strcpy_s(out, sizeof(vpath_t), "/");
 #endif
 
     return true;
@@ -183,20 +183,18 @@ bool vfs_user_home(vpath_t out) {
 #ifdef _WIN32
     char win_app_data[MAX_PATH];
     if (GetEnvironmentVariableA("LOCALAPPDATA", win_app_data, MAX_PATH)) {
-        strcpy(out, win_app_data);
+        strcpy_s(out, sizeof(vpath_t), win_app_data);
         return true;
-    }
-    else {
+    } else {
         printf("error getting \"Local AppData\" path\n");
         return false;
     }
 #else
     char* home = getenv("HOME");
     if (home != NULL) {
-        strcpy(out, home);
+        strcpy_s(out, sizeof(vpath_t), home);
         return true;
-    }
-    else {
+    } else {
         printf("error getting \"Home\" path\n");
         return false;
     }
@@ -223,17 +221,15 @@ bool vfs_cd(const vpath_t path) {
 #ifdef _WIN32
     wchar_t buffer[260] = { 0 };
     cstr_to_wchar(path, buffer);
-    if (SetCurrentDirectory(buffer)) {
+    if (SetCurrentDirectoryW(buffer)) {
         return true;
-    }
-    else {
+    } else {
         printf("failed to change directory to %s\n", path);
     }
 #else
     if (chdir(path) == 0) {
         return true;
-    }
-    else {
+    } else {
         perror("failed to change directory");
     }
 #endif
@@ -255,11 +251,10 @@ uint32_t vfs_split_path(const vpath_t path, vpath_t* out) {
         if (path[i] == '\\' || path[i] == '/') {
             if (cache_len > 0) {
                 cache[cache_len] = '\0';
-                strcpy(out[index++], cache);
+                strcpy_s(out[index++], sizeof(vpath_t), cache);
                 cache_len = 0;
             }
-        }
-        else {
+        } else {
             if (cache_len < MAX_PATH - 1) {
                 cache[cache_len++] = path[i];
             }
@@ -268,7 +263,7 @@ uint32_t vfs_split_path(const vpath_t path, vpath_t* out) {
 
     if (cache_len > 0 && index < len) {
         cache[cache_len] = '\0';
-        strcpy(out[index], cache);
+        strcpy_s(out[index], sizeof(vpath_t), cache);
     }
 
     return len;
@@ -297,7 +292,7 @@ bool vfs_find_path(const vpath_t path, bool create_missing) {
 bool vfs_current_path(vpath_t out) {
 #ifdef _WIN32
     WCHAR buff[MAX_PATH] = { 0 };
-    GetCurrentDirectory(MAX_PATH, buff);
+    GetCurrentDirectoryW(MAX_PATH, buff);
     wchar_to_cstr(buff, out);
 #else
     if (getcwd(out, MAX_PATH) == NULL) {
@@ -309,8 +304,8 @@ bool vfs_current_path(vpath_t out) {
 }
 
 bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out) {
-    strcpy(out, parent);
-    strcat(out, "/");
-    strcat(out, child);
+    strcpy_s(out, sizeof(vpath_t), parent);
+    strcat_s(out, sizeof(vpath_t), "/");
+    strcat_s(out, sizeof(vpath_t), child);
     return true;
 }
