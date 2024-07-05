@@ -12,6 +12,31 @@
 #include <errno.h>
 #endif
 
+uint32_t vfs_split(vpath_t in, const char* delimiter, vpath_t* out) {
+    char* str_cpy = strdup(in);
+
+    if (str_cpy == NULL) {
+        printf("failed to allocate memory for copy\n");
+        return false;
+    }
+
+    char* token = strtok(str_cpy, delimiter);
+
+    int buffer_index = 0;
+    while (token != NULL) {
+
+        if (out) {
+            strcpy(out[buffer_index], token);
+        }
+
+        buffer_index++;
+        token = strtok(NULL, (const char*)delimiter);
+    }
+
+    free(str_cpy);
+    return buffer_index;
+}
+
 bool cstr_to_wchar(const char* str, wchar_t* wchar) {
 #ifdef _WIN32
     size_t len = 0;
@@ -57,43 +82,6 @@ bool wchar_to_cstr(const wchar_t* wchar, char* str) {
     return true;
 }
 
-static void validate_path(vpath_t path) {
-#ifdef _WIN32
-    uint32_t len = (uint32_t)strlen(path);
-    for (uint32_t i = 0; i < len; i++) {
-        if (path[i] == UNIX_PATH_END_STD) {
-            path[i] = WIN_PATH_END_STD;
-        }
-    }
-    uint32_t parent_length = (uint32_t)strlen(path);
-    char lastchar = path[parent_length - 1];
-    if (lastchar != WIN_PATH_END_STD && lastchar != UNIX_PATH_END_STD) {
-        strcat_s(path, sizeof(vpath_t), (const char*)WIN_PATH_END_STD);
-    }
-#else
-    uint32_t len = (uint32_t)strlen(path);
-    for (uint32_t i = 0; i < len; i++) {
-        if (path[i] == '\\') {
-            path[i] = '/';
-        }
-    }
-    uint32_t parent_length = (uint32_t)strlen(path);
-    char lastchar = path[parent_length - 1];
-    if (lastchar != '/') {
-        strcat_s(path, sizeof(vpath_t), "/");
-    }
-#endif
-}
-
-bool vfs_exist(const vpath_t path) {
-#ifdef _WIN32
-    DWORD dwAttrib = GetFileAttributesA(path);
-    return (dwAttrib != INVALID_FILE_ATTRIBUTES);
-#else
-    return access(path, F_OK) == 0;
-#endif
-}
-
 bool vfs_is(const vpath_t path, int type) {
 #ifdef _WIN32
     DWORD attributes = GetFileAttributesA(path);
@@ -126,14 +114,56 @@ bool vfs_is(const vpath_t path, int type) {
 #endif 
 }
 
-bool vfs_create(const vpath_t parent, const char* name, int v) {
+
+static void validate_path(vpath_t path) {
+    if (!vfs_is(path, VFS_TYPE_DIR)) return;
+
+#ifdef _WIN32
+    uint32_t len = (uint32_t)strlen(path);
+    for (uint32_t i = 0; i < len; i++) {
+        if (path[i] == UNIX_PATH_END_STD) {
+            path[i] = WIN_PATH_END_STD;
+        }
+    }
+
+    char lastchar = path[len - 1];
+    if (lastchar != WIN_PATH_END_STD && lastchar != UNIX_PATH_END_STD) {
+        path[len] = STD_PATH_END;
+        path[len + 1] = '\0';
+    }
+#else
+    uint32_t len = (uint32_t)strlen(path);
+    for (uint32_t i = 0; i < len; i++) {
+        if (path[i] == '\\') {
+            path[i] = '/';
+        }
+    }
+    uint32_t parent_length = (uint32_t)strlen(path);
+    char lastchar = path[parent_length - 1];
+    if (lastchar != '/') {
+        strcat_s(path, sizeof(vpath_t), "/");
+    }
+#endif
+}
+
+bool vfs_exist(const vpath_t path) {
+#ifdef _WIN32
+    DWORD dwAttrib = GetFileAttributesA(path);
+    return (dwAttrib != INVALID_FILE_ATTRIBUTES);
+#else
+    return access(path, F_OK) == 0;
+#endif
+}
+
+
+bool vfs_create(const vpath_t parent, const char* name, VFS_TYPE type) {
     vpath_t new_path = { 0 };
     strcpy_s(new_path, sizeof(vpath_t), parent);
 
     validate_path(new_path);
     strcat_s(new_path, sizeof(vpath_t), name);
 
-    if (v == VFS_TYPE_DIR) {
+    if (type == VFS_TYPE_DIR) {
         if (vfs_exist(new_path)) {
             return false;
         }
@@ -141,7 +171,8 @@ bool vfs_create(const vpath_t parent, const char* name, int v) {
         char cmd[MAX_PATH + 9];
         snprintf(cmd, sizeof(cmd), "mkdir %s", new_path);
         return system(cmd) == 0;
-    } else if (v == VFS_TYPE_FILE) {
+    }
+    else if (type == VFS_TYPE_FILE) {
         FILE* file;
         errno_t err = fopen_s(&file, new_path, "w");
         if (err != 0) {
@@ -155,13 +186,15 @@ bool vfs_create(const vpath_t parent, const char* name, int v) {
     return true;
 }
 
-bool vfs_path_new(const char* cstr_path, vpath_t out) {
+bool vfs_new(const char* cstr_path, vpath_t out) {
     if (!vfs_exist(cstr_path)) {
         printf("path: %s doesn't exist! create it first\n", cstr_path);
         return false;
     }
     memset(out, 0, sizeof(vpath_t));
     strcpy_s(out, sizeof(vpath_t), cstr_path);
+
+    validate_path(out);
     return true;
 }
 
@@ -185,7 +218,8 @@ bool vfs_user_home(vpath_t out) {
     if (GetEnvironmentVariableA("LOCALAPPDATA", win_app_data, MAX_PATH)) {
         strcpy_s(out, sizeof(vpath_t), win_app_data);
         return true;
-    } else {
+    }
+    else {
         printf("error getting \"Local AppData\" path\n");
         return false;
     }
@@ -194,7 +228,8 @@ bool vfs_user_home(vpath_t out) {
     if (home != NULL) {
         strcpy_s(out, sizeof(vpath_t), home);
         return true;
-    } else {
+    }
+    else {
         printf("error getting \"Home\" path\n");
         return false;
     }
@@ -223,20 +258,22 @@ bool vfs_cd(const vpath_t path) {
     cstr_to_wchar(path, buffer);
     if (SetCurrentDirectoryW(buffer)) {
         return true;
-    } else {
+    }
+    else {
         printf("failed to change directory to %s\n", path);
     }
 #else
     if (chdir(path) == 0) {
         return true;
-    } else {
+    }
+    else {
         perror("failed to change directory");
     }
 #endif
     return false;
 }
 
-uint32_t vfs_split_path(const vpath_t path, vpath_t* out) {
+uint32_t vfs_divide(const vpath_t path, vpath_t* out) {
     uint32_t len = 0;
     vfs_depth_len(path, &len);
     if (out == NULL) {
@@ -254,7 +291,8 @@ uint32_t vfs_split_path(const vpath_t path, vpath_t* out) {
                 strcpy_s(out[index++], sizeof(vpath_t), cache);
                 cache_len = 0;
             }
-        } else {
+        }
+        else {
             if (cache_len < MAX_PATH - 1) {
                 cache[cache_len++] = path[i];
             }
@@ -302,6 +340,160 @@ bool vfs_current_path(vpath_t out) {
 #endif
     return true;
 }
+
+bool vfs_extension(const char* filename, vpath_t outext) {
+    const char* dot = strrchr(filename, '.');
+    if (!dot) {
+        return false;
+    }
+    strcpy(outext, dot + 1);
+    return true;
+}
+
+bool vfs_filename(vpath_t path, vpath_t out, bool remove_extension) {
+    if (!vfs_is(path, VFS_TYPE_FILE)) {
+        return false;
+    }
+
+    const char* file_name = strrchr(path, STD_PATH_END);
+    const char* result = file_name;
+
+    if (file_name) {
+        result = file_name + 1;
+    }
+    else {
+        return false;
+    }
+    strcpy_s(out, sizeof(vpath_t), result);
+
+    if (remove_extension) {
+   
+        vpath_t* others = NULL;
+        uint32_t ssplit = vfs_split(result, ".", others);
+        if (ssplit <= 1) return true;
+     
+        others = malloc(sizeof(vpath_t) * ssplit);
+        if (!others) return false;
+
+        ssplit = vfs_split(result, ".", others);
+
+        strcpy_s(out, sizeof(vpath_t), others[0]);
+        free(others);
+    }
+
+    return true;
+}
+
+static uint32_t find_paths(vpath_t parent, vpath_t* paths, bool find_file, bool ignore_hidden, const char* extension) {
+    validate_path(parent);
+    int count = 0;
+
+    WCHAR search_path[MAX_PATH];
+    _snwprintf_s(search_path, MAX_PATH, _TRUNCATE, L"%S*", parent);
+
+    WIN32_FIND_DATA find_file_data;
+    HANDLE h_find = FindFirstFile(search_path, &find_file_data);
+
+    if (h_find == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "find child failed (%lu)\n", GetLastError());
+        return 0;
+    }
+
+    do {
+        if ((find_file && (find_file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) ||
+            (!find_file && !(find_file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))) {
+            continue;
+        }
+
+        if (find_file && extension) {
+            char buff[MAX_PATH] = { 0 };
+            wchar_to_cstr(find_file_data.cFileName, buff);
+
+            vpath_t ext = { 0 };
+            vfs_extension(buff, ext);
+
+            if (strcmp(ext, extension) != 0) continue;
+        }
+
+        if (!find_file) {
+            bool thisandback = strcmp(find_file_data.cFileName, ".") == 0 || strcmp(find_file_data.cFileName, "..") == 0;
+            if (ignore_hidden && thisandback) continue;
+        }
+
+        
+
+        WCHAR full_path_wide[MAX_PATH];
+        _snwprintf_s(full_path_wide, MAX_PATH, _TRUNCATE, L"%S%s", parent, find_file_data.cFileName);
+
+   
+        if (paths) {
+            size_t converted_chars = 0;
+            errno_t conversion_result = wcstombs_s(&converted_chars, paths[count], MAX_PATH, full_path_wide, _TRUNCATE);
+            validate_path(paths[count]);
+            if (conversion_result != 0) {
+                perror("Error in converting wide char to multibyte.\n");
+                continue;
+            }
+
+        }
+
+ 
+        count++;
+
+    } while (FindNextFile(h_find, &find_file_data) != 0);
+
+    FindClose(h_find);
+    return count;
+}
+
+uint32_t vfs_files(vpath_t parent, vpath_t* files, const char* extension) {
+    return find_paths(parent, files, true, true, extension);
+}
+
+uint32_t vfs_dirs(vpath_t parent, vpath_t* dirs) {
+    return find_paths(parent, dirs, false, true, NULL);
+}
+
+static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char* extension) {
+
+    uint32_t child_path_count   = vfs_dirs(parent, NULL);
+    vpath_t* child_paths        = calloc(child_path_count, sizeof(vpath_t));
+    if (!child_paths) return;
+
+    if (child_path_count > 0) {
+        vfs_dirs(parent, child_paths);
+    }
+
+    for (uint32_t i = 0; i < child_path_count; i++) {
+        fetch_all(child_paths[i], count, out, extension);
+    }
+
+    uint32_t child_file_count = vfs_files(parent, NULL, extension);
+
+    vpath_t* files = NULL;
+    if (out) {
+        files = calloc(child_file_count, sizeof(vpath_t));
+        vfs_files(parent, files, extension);
+    }
+
+    for (uint32_t i = 0; i < child_file_count; i++) {
+        if (out && files) {
+            strcpy_s(out[*count], sizeof(vpath_t), files[i]);
+        }
+        (*count)++;
+    }
+
+    if (files) free(files);
+    if (child_paths) free(child_paths);
+
+}
+
+uint32_t vfs_all_files(const vpath_t parent, vpath_t* files, const char* extension) {
+    uint32_t total_files = 0;
+    fetch_all(parent, &total_files, files, extension);
+    return total_files;
+}
+
 
 bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out) {
     strcpy_s(out, sizeof(vpath_t), parent);
