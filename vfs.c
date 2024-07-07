@@ -114,7 +114,6 @@ bool vfs_is(const vpath_t path, int type) {
 #endif 
 }
 
-
 static void validate_path(vpath_t path) {
     if (!vfs_is(path, VFS_TYPE_DIR)) return;
 
@@ -154,7 +153,6 @@ bool vfs_exist(const vpath_t path) {
     return access(path, F_OK) == 0;
 #endif
 }
-
 
 bool vfs_create(const vpath_t parent, const char* name, VFS_TYPE type) {
     vpath_t new_path = { 0 };
@@ -494,10 +492,41 @@ uint32_t vfs_all_files(const vpath_t parent, vpath_t* files, const char* extensi
     return total_files;
 }
 
-
 bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out) {
     strcpy_s(out, sizeof(vpath_t), parent);
     strcat_s(out, sizeof(vpath_t), "/");
     strcat_s(out, sizeof(vpath_t), child);
     return true;
+}
+
+
+bool vfs_find(vpath_t path, const char* name, bool recursive) {
+    /*
+    validate_path(path);
+    vpath_t current_paths[1024]; 
+    uint32_t path_count = recursive ? vfs_all_files(path, current_paths, NULL) : vfs_files(path, current_paths, NULL);
+
+    for (uint32_t i = 0; i < path_count; i++) {
+        vpath_t filename = { 0 };
+        vfs_filename(current_paths[i], filename, false);
+
+        if (strcmp(filename, name) == 0) {
+            strcpy_s(path, sizeof(vpath_t), current_paths[i]);
+            return true;
+        }
+    }
+
+    if (recursive) {
+        uint32_t dir_count = vfs_dirs(path, current_paths);
+
+        for (uint32_t i = 0; i < dir_count; i++) {
+            if (vfs_find(current_paths[i], name, recursive)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+    */
+    return false;
 }

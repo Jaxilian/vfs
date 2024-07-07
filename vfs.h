@@ -24,7 +24,6 @@ typedef enum {
 } VFS_TYPE;
 
 
-
 typedef char vpath_t[MAX_PATH];
 
 bool cstr_to_wchar(const char* str, wchar_t* wchar);
@@ -45,6 +44,7 @@ bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out);
 uint32_t vfs_split(vpath_t in, const char* delimiter, vpath_t* out);
 bool vfs_extension(const char* filename, vpath_t outext);
 bool vfs_filename(vpath_t path, vpath_t out, bool remove_extension);
+bool vfs_find(vpath_t path, const char* name, bool recursive );
 
 // if extension is NULL, all files will be returned
 uint32_t vfs_files(const vpath_t parent, vpath_t* files, const char* extension);
