@@ -365,11 +365,11 @@ bool vfs_filename(vpath_t path, vpath_t out, bool remove_extension) {
     strcpy_s(out, sizeof(vpath_t), result);
 
     if (remove_extension) {
-   
+
         vpath_t* others = NULL;
         uint32_t ssplit = vfs_split(result, ".", others);
         if (ssplit <= 1) return true;
-     
+
         others = malloc(sizeof(vpath_t) * ssplit);
         if (!others) return false;
 
@@ -418,12 +418,12 @@ static uint32_t find_paths(vpath_t parent, vpath_t* paths, bool find_file, bool 
             if (ignore_hidden && thisandback) continue;
         }
 
-        
+
 
         WCHAR full_path_wide[MAX_PATH];
         _snwprintf_s(full_path_wide, MAX_PATH, _TRUNCATE, L"%S%s", parent, find_file_data.cFileName);
 
-   
+
         if (paths) {
             size_t converted_chars = 0;
             errno_t conversion_result = wcstombs_s(&converted_chars, paths[count], MAX_PATH, full_path_wide, _TRUNCATE);
@@ -435,7 +435,7 @@ static uint32_t find_paths(vpath_t parent, vpath_t* paths, bool find_file, bool 
 
         }
 
- 
+
         count++;
 
     } while (FindNextFile(h_find, &find_file_data) != 0);
@@ -454,8 +454,8 @@ uint32_t vfs_dirs(vpath_t parent, vpath_t* dirs) {
 
 static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char* extension) {
 
-    uint32_t child_path_count   = vfs_dirs(parent, NULL);
-    vpath_t* child_paths        = calloc(child_path_count, sizeof(vpath_t));
+    uint32_t child_path_count = vfs_dirs(parent, NULL);
+    vpath_t* child_paths = calloc(child_path_count, sizeof(vpath_t));
     if (!child_paths) return;
 
     if (child_path_count > 0) {
@@ -500,33 +500,58 @@ bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out) {
 }
 
 
-bool vfs_find(vpath_t path, const char* name, bool recursive) {
-    /*
-    validate_path(path);
-    vpath_t current_paths[1024]; 
-    uint32_t path_count = recursive ? vfs_all_files(path, current_paths, NULL) : vfs_files(path, current_paths, NULL);
+bool vfs_find(vpath_t path, vpath_t outpath, const char* name, bool recursive) {
 
-    for (uint32_t i = 0; i < path_count; i++) {
-        vpath_t filename = { 0 };
-        vfs_filename(current_paths[i], filename, false);
-
-        if (strcmp(filename, name) == 0) {
-            strcpy_s(path, sizeof(vpath_t), current_paths[i]);
-            return true;
-        }
-    }
+    uint32_t    file_count      = 0;
+    vpath_t*    files           = NULL;
+    bool        has_extension   = false;
+    vpath_t     extension       = { 0 };
+    vpath_t     filename        = { 0 };
 
     if (recursive) {
-        uint32_t dir_count = vfs_dirs(path, current_paths);
+        file_count = vfs_all_files(path, NULL, NULL);
+        if (file_count <= 0) return false;
 
-        for (uint32_t i = 0; i < dir_count; i++) {
-            if (vfs_find(current_paths[i], name, recursive)) {
+        files = calloc(file_count, sizeof(vpath_t));
+        if (!files) return false;
+
+        vfs_all_files(path, files, NULL);
+        has_extension = vfs_extension(name, extension);
+
+        for (uint32_t i = 0; i < file_count; i++) {
+           
+            vfs_filename(files[i], filename, !has_extension);
+
+            if (strcmp(filename, name) == 0) {
+                strcpy_s(outpath, sizeof(vpath_t), files[i]);
+                free(files);
+                return true;
+            }
+        }
+    }
+    else {
+        file_count = vfs_files(path, NULL, NULL);
+        if (file_count <= 0) return false;
+
+        files = calloc(file_count, sizeof(vpath_t));
+        if (!files) return false;
+
+        vfs_files(path, files, NULL);
+        has_extension = vfs_extension(name, extension);
+
+        for (uint32_t i = 0; i < file_count; i++) {
+
+            vfs_filename(files[i], filename, !has_extension);
+
+            if (strcmp(filename, name) == 0) {
+                strcpy_s(outpath, sizeof(vpath_t), files[i]);
+                free(files);
                 return true;
             }
         }
     }
 
-    return false;
-    */
+
+    free(files);
     return false;
 }
