@@ -12,6 +12,26 @@
 #include <errno.h>
 #endif
 
+void vfs_to_unix(vpath_t path) {
+    uint32_t len = (uint32_t)strlen(path);
+
+    for (uint32_t i = 0; i < len; i++) {
+        if (path[i] == WIN_PATH_END_STD) {
+            path[i] = UNIX_PATH_END_STD;
+        }
+    }
+}
+
+void vfs_to_win32(vpath_t path) {
+    uint32_t len = (uint32_t)strlen(path);
+
+    for (uint32_t i = 0; i < len; i++) {
+        if (path[i] == UNIX_PATH_END_STD) {
+            path[i] = WIN_PATH_END_STD;
+        }
+    }
+}
+
 uint32_t vfs_split(vpath_t in, const char* delimiter, vpath_t* out) {
     char* str_cpy = strdup(in);
 
@@ -115,34 +135,21 @@ bool vfs_is(const vpath_t path, int type) {
 }
 
 static void validate_path(vpath_t path) {
-    if (!vfs_is(path, VFS_TYPE_DIR)) return;
-
-#ifdef _WIN32
     uint32_t len = (uint32_t)strlen(path);
     for (uint32_t i = 0; i < len; i++) {
-        if (path[i] == UNIX_PATH_END_STD) {
-            path[i] = WIN_PATH_END_STD;
+        if (path[i] == UNIX_PATH_END_STD || path[i] == WIN_PATH_END_STD) {
+            path[i] = STD_PATH_END;
         }
     }
 
-    char lastchar = path[len - 1];
-    if (lastchar != WIN_PATH_END_STD && lastchar != UNIX_PATH_END_STD) {
-        path[len] = STD_PATH_END;
-        path[len + 1] = '\0';
-    }
-#else
-    uint32_t len = (uint32_t)strlen(path);
-    for (uint32_t i = 0; i < len; i++) {
-        if (path[i] == '\\') {
-            path[i] = '/';
+    if (vfs_is(path, VFS_TYPE_DIR)) {
+        char lastchar = path[len - 1];
+        if (lastchar != STD_PATH_END) {
+            path[len] = STD_PATH_END;
+            path[len + 1] = '\0';
         }
     }
-    uint32_t parent_length = (uint32_t)strlen(path);
-    char lastchar = path[parent_length - 1];
-    if (lastchar != '/') {
-        strcat_s(path, sizeof(vpath_t), "/");
-    }
-#endif
+   
 }
 
 bool vfs_exist(const vpath_t path) {
@@ -493,20 +500,25 @@ uint32_t vfs_all_files(const vpath_t parent, vpath_t* files, const char* extensi
 }
 
 bool vfs_extend_path(const vpath_t parent, const char* child, vpath_t out) {
-    strcpy_s(out, sizeof(vpath_t), parent);
-    strcat_s(out, sizeof(vpath_t), "/");
+    if (!vfs_is(parent, VFS_TYPE_DIR)) {
+        printf("%s is not a directory\n", parent);
+        return false;
+    }
+    validate_path(parent);
     strcat_s(out, sizeof(vpath_t), child);
+    validate_path(parent);
+
     return true;
 }
 
 
 bool vfs_find(vpath_t path, vpath_t outpath, const char* name, bool recursive) {
 
-    uint32_t    file_count      = 0;
-    vpath_t*    files           = NULL;
-    bool        has_extension   = false;
-    vpath_t     extension       = { 0 };
-    vpath_t     filename        = { 0 };
+    uint32_t    file_count = 0;
+    vpath_t* files = NULL;
+    bool        has_extension = false;
+    vpath_t     extension = { 0 };
+    vpath_t     filename = { 0 };
 
     if (recursive) {
         file_count = vfs_all_files(path, NULL, NULL);
@@ -519,7 +531,7 @@ bool vfs_find(vpath_t path, vpath_t outpath, const char* name, bool recursive) {
         has_extension = vfs_extension(name, extension);
 
         for (uint32_t i = 0; i < file_count; i++) {
-           
+
             vfs_filename(files[i], filename, !has_extension);
 
             if (strcmp(filename, name) == 0) {
@@ -555,3 +567,4 @@ bool vfs_find(vpath_t path, vpath_t outpath, const char* name, bool recursive) {
     free(files);
     return false;
 }
+
