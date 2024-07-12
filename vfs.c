@@ -329,6 +329,7 @@ bool vfs_find_path(const vpath_t path, bool create_missing) {
         return vfs_create(path, "", VFS_TYPE_DIR);
     }
 
+    validate_path(path);
     return found;
 }
 
@@ -343,6 +344,7 @@ bool vfs_current_path(vpath_t out) {
         return false;
     }
 #endif
+    validate_path(out);
     return true;
 }
 
@@ -452,11 +454,28 @@ static uint32_t find_paths(vpath_t parent, vpath_t* paths, bool find_file, bool 
 }
 
 uint32_t vfs_files(vpath_t parent, vpath_t* files, const char* extension) {
+    if (files) memset(files, 0, sizeof(vpath_t));
     return find_paths(parent, files, true, true, extension);
 }
 
 uint32_t vfs_dirs(vpath_t parent, vpath_t* dirs) {
     return find_paths(parent, dirs, false, true, NULL);
+}
+
+bool vfs_newfile(vpath_t root, const char* name, vpath_t newpath) {
+    vpath_t existing = { 0 };
+    if (vfs_find(root, existing, name, false)) {
+        strcpy_s(newpath, sizeof(vpath_t), existing);
+        return true;
+    }
+    
+    validate_path(root);
+    strcpy_s(newpath, sizeof(vpath_t), root);
+    strcat_s(newpath, sizeof(vpath_t), name);
+    FILE* f = fopen(newpath, "w");
+    if (!f)return false;
+    fclose(f);
+    return true;
 }
 
 static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char* extension) {
@@ -475,23 +494,25 @@ static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char*
 
     uint32_t child_file_count = vfs_files(parent, NULL, extension);
 
-    vpath_t* files = NULL;
-    if (out) {
-        files = calloc(child_file_count, sizeof(vpath_t));
-        vfs_files(parent, files, extension);
+    vpath_t* files = calloc(child_file_count, sizeof(vpath_t));
+    if (!files) {
+        free(child_paths);
+        return;
     }
 
+    vfs_files(parent, files, extension);
+
     for (uint32_t i = 0; i < child_file_count; i++) {
-        if (out && files) {
+        if (out) {
             strcpy_s(out[*count], sizeof(vpath_t), files[i]);
         }
         (*count)++;
     }
 
-    if (files) free(files);
-    if (child_paths) free(child_paths);
-
+    free(files);
+    free(child_paths);
 }
+
 
 uint32_t vfs_all_files(const vpath_t parent, vpath_t* files, const char* extension) {
     uint32_t total_files = 0;
@@ -568,3 +589,38 @@ bool vfs_find(vpath_t path, vpath_t outpath, const char* name, bool recursive) {
     return false;
 }
 
+bool vfs_relative(vpath_t ancester, vpath_t descendant, vpath_t result) {
+    size_t ansc_len = strlen(ancester);
+    size_t desc_len = strlen(descendant);
+    validate_path(ancester);
+    validate_path(descendant);
+
+    bool found_end = false;
+    uint32_t result_len = 0;
+    for (uint32_t i = 0; i < sizeof(vpath_t); i++) {
+
+        if (!found_end) {
+            found_end = ancester[i] != descendant[i];
+            continue;
+        }
+        else {
+            if (descendant[i - 1] == '\0') {
+                break;
+            }
+            result[result_len] = descendant[i-1];
+            result_len++;
+        }
+    }
+    result[result_len] = '\0';
+    return false;
+}
+
+bool vfs_dirname(vpath_t path, vpath_t out) {
+    validate_path(path);
+    char delimiter[] = { STD_PATH_END };
+    uint32_t stages = vfs_split(path, delimiter, NULL);
+    vpath_t* allocs = malloc(sizeof(vpath_t) * stages);
+    vfs_split(path, delimiter, allocs);
+    strcpy_s(out, sizeof(vpath_t), allocs[stages - 1]);
+    free(allocs);
+}
