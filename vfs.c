@@ -454,7 +454,6 @@ static uint32_t find_paths(vpath_t parent, vpath_t* paths, bool find_file, bool 
 }
 
 uint32_t vfs_files(vpath_t parent, vpath_t* files, const char* extension) {
-    if (files) memset(files, 0, sizeof(vpath_t));
     return find_paths(parent, files, true, true, extension);
 }
 
@@ -479,7 +478,6 @@ bool vfs_newfile(vpath_t root, const char* name, vpath_t newpath) {
 }
 
 static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char* extension) {
-
     uint32_t child_path_count = vfs_dirs(parent, NULL);
     vpath_t* child_paths = calloc(child_path_count, sizeof(vpath_t));
     if (!child_paths) return;
@@ -493,23 +491,25 @@ static void fetch_all(vpath_t parent, uint32_t* count, vpath_t* out, const char*
     }
 
     uint32_t child_file_count = vfs_files(parent, NULL, extension);
-
-    vpath_t* files = calloc(child_file_count, sizeof(vpath_t));
-    if (!files) {
-        free(child_paths);
-        return;
-    }
-
-    vfs_files(parent, files, extension);
-
-    for (uint32_t i = 0; i < child_file_count; i++) {
-        if (out) {
-            strcpy_s(out[*count], sizeof(vpath_t), files[i]);
+    if (child_file_count > 0) {
+        vpath_t* files = malloc(sizeof(vpath_t) * child_file_count);
+        if (!files) {
+            free(child_paths);
+            return;
         }
-        (*count)++;
+
+        vfs_files(parent, files, extension);
+
+        for (uint32_t i = 0; i < child_file_count; i++) {
+            if (out) {
+                strcpy(out[*count], files[i]);
+            }
+            (*count)++;
+        }
+
+        free(files);
     }
 
-    free(files);
     free(child_paths);
 }
 
